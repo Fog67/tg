@@ -77,7 +77,7 @@ async def send_outfit_image(message: types.Message, style: str, category: int):
     if category > max_files.get(style, 5):
         category = max_files.get(style, 5)  # Берем максимальный доступный
 
-    file_path = f"https://github.com/Fog67/tg/blob/5b4a6cce3612125dea432e0e664466ed077e4cd8/{style}{category}.png"
+    file_path =  f"https://raw.githubusercontent.com/Fog67/tg/main/{style}{category}.png"
 
     try:
         with open(file_path, 'rb') as photo:
