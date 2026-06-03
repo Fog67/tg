@@ -101,7 +101,7 @@ async def send_outfit_image(message: types.Message, style: str, category: int):
                 caption=f"👕 {style_names[style]} - {category_names[category]}"
             )
     except FileNotFoundError:
-        await message.answer(f"❌ Картинка не найдена: {file_path}")
+        await message.answer(f"")
 
 
 # 🌤 Расшифровка кодов погоды WMO (Open-Meteo)
