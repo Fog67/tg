@@ -280,7 +280,7 @@ async def main():
     dp.message.register(handle_weather, F.text == "Узнать погоду ☁️")
 
     # Обработчик кнопки "Назад" из клавиатуры погоды
-    dp.message.register(handle_back_to_start, F.text == "️ Назад")
+    dp.message.register(handle_back_to_start, F.text.contains("Назад"))
 
     dp.callback_query.register(handle_outfit_choice, F.data.startswith("style_"))
     # Обработчик кнопки "Назад" из инлайн-клавиатуры стилей
