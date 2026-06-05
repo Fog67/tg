@@ -178,7 +178,7 @@ async def handle_location(message: types.Message):
     )
 
 
-# ◀️ Обработчик кнопки "Назад" из клавиатуры погоды → возвращает к старту
+
 async def handle_back_to_start(message: types.Message):
     await message.answer(
         "Привет! Выбери регион, в котором хочешь узнать погоду",
@@ -221,8 +221,6 @@ async def handle_weather(message: types.Message, state: FSMContext):
             umbrella_message = "\n\n☔ **Совет: не забудь взять зонт!**"
 
         wind_message = ""
-        if wind_speed > 10:
-            wind_message = f"\n💨 **Сильный ветер! Ощущается как {apparent_temp}°C**"
 
         await state.update_data(
             temperature=temp,
@@ -264,7 +262,6 @@ async def handle_outfit_choice(callback: types.CallbackQuery, state: FSMContext)
     await callback.answer()
 
 
-# ◀️ Обработчик кнопки "Назад" из инлайн-клавиатуры стилей → возвращает к клавиатуре погоды
 async def handle_back_to_weather(callback: types.CallbackQuery):
     await callback.message.answer(
         "🌤 Нажми кнопку, чтобы узнать погоду",
