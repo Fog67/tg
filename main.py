@@ -32,32 +32,43 @@ weather_menu_keyboard = ReplyKeyboardMarkup(
 )
 
 
-# 🎨 Функция для создания инлайн-клавиатуры с кнопками стилей
+#  Функция для создания инлайн-клавиатуры с кнопками стилей
 def get_outfit_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🏃 Sport", callback_data="style_sport")
     builder.button(text="👔 Nefor", callback_data="style_nefor")
-    builder.button(text="👕 Casual", callback_data="style_casual")
+    builder.button(text=" Casual", callback_data="style_casual")
     builder.button(text="📦 Archive", callback_data="style_archive")
-    builder.adjust(2)  # 2 кнопки в ряд
+    builder.adjust(2)
     return builder.as_markup()
 
 
-# 🌡️ Функция для определения категории погоды по температуре
-def get_weather_category(temp: float) -> int:
-    if temp >= 25:
-        return 1  # очень тепло
-    elif temp >= 18:
-        return 2  # тепло
-    elif temp >= 10:
-        return 3  # прохладно
-    elif temp >= 0:
-        return 4  # по-зимнему прохладно
+# 🌡️ Функция для определения категории погоды по ощущаемой температуре и ветру
+def get_weather_category(apparent_temp: float, wind_speed: float) -> int:
+    # Базовая категория по ощущаемой температуре
+    if apparent_temp >= 25:
+        category = 1  # очень тепло
+    elif apparent_temp >= 18:
+        category = 2  # тепло
+    elif apparent_temp >= 10:
+        category = 3  # прохладно
+    elif apparent_temp >= 0:
+        category = 4  # по-зимнему прохладно
     else:
-        return 5  # мороз
+        category = 5  # мороз
+
+    # Если ветер сильный (>10 м/с), увеличиваем категорию на 1 (холоднее)
+    if wind_speed > 10 and category < 5:
+        category += 1
+
+    # Ограничиваем максимум 5
+    if category > 5:
+        category = 5
+
+    return category
 
 
-# ☔ Функция проверки, идёт ли дождь
+#  Функция проверки, идёт ли дождь
 def is_raining(weather_code: int) -> bool:
     rain_codes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99]
     return weather_code in rain_codes
@@ -65,7 +76,6 @@ def is_raining(weather_code: int) -> bool:
 
 # 🎨 Функция для отправки картинки с аутфитом
 async def send_outfit_image(message: types.Message, style: str, category: int):
-    # Определяем максимальный номер для каждого стиля
     max_files = {
         "sport": 5,
         "nefor": 5,
@@ -73,35 +83,33 @@ async def send_outfit_image(message: types.Message, style: str, category: int):
         "archive": 5
     }
 
-    # Проверяем, существует ли файл с таким номером
     if category > max_files.get(style, 5):
-        category = max_files.get(style, 5)  # Берем максимальный доступный
+        category = max_files.get(style, 5)
 
-    file_path =  f"https://raw.githubusercontent.com/Fog67/tg/main/{style}{category}.png"
+    file_url = f"https://raw.githubusercontent.com/Fog67/tg/main/{style}{category}.png"
+
+    style_names = {
+        "sport": "🏃 Sport",
+        "nefor": "👔 Nefor",
+        "casual": " Casual",
+        "archive": "📦 Archive"
+    }
+
+    category_names = {
+        1: "очень тепло",
+        2: "тепло",
+        3: "прохладно",
+        4: "по-зимнему прохладно",
+        5: "мороз"
+    }
 
     try:
-        with open(file_path, 'rb') as photo:
-            style_names = {
-                "sport": " Sport",
-                "nefor": " Nefor",
-                "casual": " Casual",
-                "archive": " Archive"
-            }
-            category_names = {
-                1: "очень тепло",
-                2: "тепло",
-                3: "прохладно",
-                4: "по-зимнему прохладно",
-                5: "мороз",
-                6: "очень холодно"
-            }
-
-            await message.answer_photo(
-                photo=photo,
-                caption=f"👕 {style_names[style]} - {category_names[category]}"
-            )
-    except FileNotFoundError:
-        await message.answer(f"")
+        await message.answer_photo(
+            photo=file_url,
+            caption=f"👕 {style_names[style]} - {category_names[category]}"
+        )
+    except Exception as e:
+        await message.answer(f"❌ Ошибка загрузки картинки: {e}")
 
 
 # 🌤 Расшифровка кодов погоды WMO (Open-Meteo)
@@ -114,7 +122,7 @@ def decode_weather_code(code: int) -> str:
         45: ("🌫", "Туман"),
         48: ("🌫️", "Туман с изморозью"),
         51: ("🌦", "Слабая морось"),
-        53: ("🌦", "Умеренная морось"),
+        53: ("", "Умеренная морось"),
         55: ("🌧", "Сильная морось"),
         56: ("🌧", "Ледяная морось"),
         57: ("🌧", "Сильная ледяная морось"),
@@ -122,8 +130,8 @@ def decode_weather_code(code: int) -> str:
         63: ("🌧", "Умеренный дождь"),
         65: ("🌧", "Сильный дождь"),
         66: ("🌨", "Ледяной дождь"),
-        67: ("🌨", "Сильный ледяной дождь"),
-        71: ("🌨", "Слабый снег"),
+        67: ("", "Сильный ледяной дождь"),
+        71: ("", "Слабый снег"),
         73: ("🌨", "Умеренный снег"),
         75: ("❄️", "Сильный снегопад"),
         77: ("🌨", "Снежные зёрна"),
@@ -133,7 +141,7 @@ def decode_weather_code(code: int) -> str:
         85: ("🌨", "Снежная крупа"),
         86: ("❄️", "Сильный град со снегом"),
         95: ("⛈", "Гроза"),
-        96: ("⛈", "Гроза с градом"),
+        96: ("", "Гроза с градом"),
         99: ("⛈", "Сильная гроза с градом"),
     }
     emoji, desc = codes.get(code, ("❓", "Неизвестно"))
@@ -149,7 +157,7 @@ async def cmd_start(message: types.Message):
 
 
 async def handle_region_button(message: types.Message):
-    await message.answer("📍 Отправь геопозицию")
+    await message.answer(" Отправь геопозицию")
 
 
 async def handle_location(message: types.Message):
@@ -178,10 +186,11 @@ async def handle_weather(message: types.Message, state: FSMContext):
     lat = user_locations[user_id]["lat"]
     lon = user_locations[user_id]["lon"]
 
+    # Добавляем apparent_temperature в запрос
     url = (
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}"
-        f"&current=temperature_2m,weather_code,precipitation,wind_speed_10m"
+        f"&current=temperature_2m,apparent_temperature,weather_code,precipitation,wind_speed_10m"
     )
 
     try:
@@ -191,9 +200,12 @@ async def handle_weather(message: types.Message, state: FSMContext):
 
         weather_emoji, weather_desc = decode_weather_code(current["weather_code"]).split(" ", 1)
 
-        # Определяем категорию погоды
         temp = current["temperature_2m"]
-        category = get_weather_category(temp)
+        apparent_temp = current["apparent_temperature"]
+        wind_speed = current["wind_speed_10m"]
+
+        # Определяем категорию по ощущаемой температуре и ветру
+        category = get_weather_category(apparent_temp, wind_speed)
 
         # Проверяем, идёт ли дождь
         weather_code = current["weather_code"]
@@ -201,15 +213,27 @@ async def handle_weather(message: types.Message, state: FSMContext):
         if is_raining(weather_code):
             umbrella_message = "\n\n☔ **Совет: не забудь взять зонт!**"
 
-        # Сохраняем температуру в state
-        await state.update_data(temperature=temp, category=category)
+        # Сообщение о сильном ветре
+        wind_message = ""
+        if wind_speed > 10:
+            wind_message = f"\n💨 **Сильный ветер! Ощущается как {apparent_temp}°C**"
+
+        # Сохраняем данные в state
+        await state.update_data(
+            temperature=temp,
+            apparent_temperature=apparent_temp,
+            wind_speed=wind_speed,
+            category=category
+        )
 
         text = (
-            f"🌤 **Погода сейчас**:\n\n"
+            f" **Погода сейчас**:\n\n"
             f"🌡 Температура: {temp}°C\n"
+            f"🌡 Ощущается как: {apparent_temp}°C\n"
             f"{weather_emoji} {weather_desc.strip()}\n"
             f"💧 Осадки: {current['precipitation']} мм/ч\n"
-            f"💨 Ветер: {current['wind_speed_10m']} м/с"
+            f"💨 Ветер: {wind_speed} м/с"
+            f"{wind_message}"
             f"{umbrella_message}\n\n"
             f"👔 **Выбери стиль образа:**"
         )
@@ -228,11 +252,9 @@ async def handle_weather(message: types.Message, state: FSMContext):
 async def handle_outfit_choice(callback: types.CallbackQuery, state: FSMContext):
     style = callback.data.replace("style_", "")
 
-    # Получаем данные о погоде из state
     data = await state.get_data()
-    category = data.get("category", 3)  # По умолчанию прохладно
+    category = data.get("category", 3)
 
-    # Отправляем соответствующую картинку
     await send_outfit_image(callback.message, style, category)
     await callback.answer()
 
@@ -245,8 +267,6 @@ async def main():
     dp.message.register(handle_region_button, F.text == "Выбрать регион 📍")
     dp.message.register(handle_location, F.location)
     dp.message.register(handle_weather, F.text == "Узнать погоду ☁️")
-
-    # Регистрируем обработчик callback для кнопок стилей
     dp.callback_query.register(handle_outfit_choice, F.data.startswith("style_"))
 
     print("🤖 Бот запущен. Для остановки нажмите Ctrl+C.")
