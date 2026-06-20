@@ -6,15 +6,21 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+import re
+from datetime import datetime
 
 BOT_TOKEN = "8420933081:AAH2mYV5Qvj6F6iFomFvlgdGgf6wKiDUeGI"
 
 user_locations: dict[int, dict[str, float]] = {}
+user_sensitivity: dict[int, int] = {}
+user_notification_time: dict[int, str] = {}  # Хранит время в формате "ЧЧ:ММ"
+user_notifications_enabled: dict[int, bool] = {}  # Включены ли уведомления
 
 
 # Состояния для FSM
 class OutfitState(StatesGroup):
     waiting_for_style = State()
+    waiting_for_time = State()
 
 
 # Клавиатуры
@@ -35,12 +41,30 @@ weather_menu_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+# 🌡️ Клавиатура выбора восприимчивости
+sensitivity_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Часто мерзну")],
+        [KeyboardButton(text="Нормальная восприимчивость")],
+        [KeyboardButton(text="Часто жарко")]
+    ],
+    resize_keyboard=True
+)
+
+# ⏰ Клавиатура для настройки уведомлений
+notification_time_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🔕 не хочу получать уведомления")]
+    ],
+    resize_keyboard=True
+)
+
 
 #  Функция для создания инлайн-клавиатуры с кнопками стилей и "Назад"
 def get_outfit_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🏃 Sport", callback_data="style_sport")
-    builder.button(text=" Nefor", callback_data="style_nefor")
+    builder.button(text="👖 Nefor", callback_data="style_nefor")
     builder.button(text="👕 Casual", callback_data="style_casual")
     builder.button(text="📦 Archive", callback_data="style_archive")
     builder.button(text="◀️ Назад", callback_data="back_to_weather")
@@ -92,9 +116,9 @@ async def send_outfit_image(message: types.Message, style: str, category: int):
 
     style_names = {
         "sport": "🏃 Sport",
-        "nefor": "👔 Nefor",
-        "casual": " Casual",
-        "archive": " Archive"
+        "nefor": "👖 Nefor",
+        "casual": "👕 Casual",
+        "archive": "📦 Archive"
     }
 
     category_names = {
@@ -120,7 +144,7 @@ def decode_weather_code(code: int) -> str:
         0: ("☀️", "Ясно"),
         1: ("🌤", "Преимущественно ясно"),
         2: ("⛅", "Переменная облачность"),
-        3: ("️", "Пасмурно"),
+        3: ("☁️", "Пасмурно"),
         45: ("🌫", "Туман"),
         48: ("🌫️", "Туман с изморозью"),
         51: ("🌦", "Слабая морось"),
@@ -130,7 +154,7 @@ def decode_weather_code(code: int) -> str:
         57: ("🌧", "Сильная ледяная морось"),
         61: ("🌧", "Слабый дождь"),
         63: ("🌧", "Умеренный дождь"),
-        65: ("", "Сильный дождь"),
+        65: ("🌧", "Сильный дождь"),
         66: ("🌨", "Ледяной дождь"),
         67: ("🌨", "Сильный ледяной дождь"),
         71: ("🌨", "Слабый снег"),
@@ -139,15 +163,25 @@ def decode_weather_code(code: int) -> str:
         77: ("🌨", "Снежные зёрна"),
         80: ("🌦", "Ливневый дождь"),
         81: ("🌧", "Сильный ливень"),
-        82: ("", "Очень сильный ливень"),
+        82: ("🌧", "Очень сильный ливень"),
         85: ("🌨", "Снежная крупа"),
-        86: ("️", "Сильный град со снегом"),
+        86: ("🌨", "Сильный град со снегом"),
         95: ("⛈", "Гроза"),
-        96: ("", "Гроза с градом"),
+        96: ("⛈", "Гроза с градом"),
         99: ("⛈", "Сильная гроза с градом"),
     }
     emoji, desc = codes.get(code, ("❓", "Неизвестно"))
     return f"{emoji} {desc}"
+
+
+# Функция для парсинга времени
+def parse_time(time_text: str) -> str | None:
+    pattern = r'^([01]?\d|2[0-3]):([0-5]\d)$'
+    match = re.match(pattern, time_text.strip())
+    if match:
+        hours, minutes = match.groups()
+        return f"{int(hours):02d}:{int(minutes):02d}"
+    return None
 
 
 # Хендлеры
@@ -159,7 +193,7 @@ async def cmd_start(message: types.Message):
 
 
 async def handle_region_button(message: types.Message):
-    await message.answer(" Отправь геопозицию")
+    await message.answer("📍 Отправь геопозицию")
 
 
 async def handle_location(message: types.Message):
@@ -173,13 +207,73 @@ async def handle_location(message: types.Message):
     user_locations[user_id] = {"lat": lat, "lon": lon}
 
     await message.reply(
-        f"✅ Координаты сохранены:\n🌐 {lat}, {lon}",
+        f"✅ Координаты сохранены:\n🌐 {lat}, {lon}\n\n"
+        f"Теперь выбери свою восприимчивость к температуре:",
+        reply_markup=sensitivity_keyboard
+    )
+
+
+async def handle_sensitivity(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    text = message.text
+
+    if "мерзну" in text:
+        user_sensitivity[user_id] = 1
+        sensitivity_msg = "часто мёрзнешь"
+    elif "Нормальная" in text:
+        user_sensitivity[user_id] = 0
+        sensitivity_msg = "Нормальная восприимчивость"
+    elif "жарко" in text:
+        user_sensitivity[user_id] = -1
+        sensitivity_msg = "часто жарко"
+    else:
+        return
+
+    await state.set_state(OutfitState.waiting_for_time)
+    await message.reply(
+        f"✅ Понял! Учту, что тебе {sensitivity_msg}.\n\n"
+        f"⏰ В какое время ты хочешь получать рекомендации о погоде?\n"
+        f"Введи время в формате ЧЧ:ММ (например: 08:00 или 18:30)",
+        reply_markup=notification_time_keyboard
+    )
+
+
+async def handle_notification_time(message: types.Message, state: FSMContext):
+    if message.text == "🔕 не хочу получать уведомления":
+        user_id = message.from_user.id
+        user_notifications_enabled[user_id] = False
+        await state.clear()
+        await message.reply(
+            "✅ Уведомления отключены.\n"
+            f"Теперь нажми «Узнать погоду ☁️», чтобы получить текущую погоду.",
+            reply_markup=weather_menu_keyboard
+        )
+        return
+
+    time_parsed = parse_time(message.text)
+
+    if time_parsed is None:
+        await message.reply(
+            "❌ Некорректный формат времени.\n"
+            f"Пожалуйста, введи время в формате ЧЧ:ММ (например: 08:00 или 18:30)",
+            reply_markup=notification_time_keyboard
+        )
+        return
+
+    user_id = message.from_user.id
+    user_notification_time[user_id] = time_parsed
+    user_notifications_enabled[user_id] = True
+
+    await state.clear()
+    await message.reply(
+        f"✅ Отлично! Буду отправлять рекомендации в {time_parsed}.\n\n"
+        f"Теперь нажми «Узнать погоду ☁️», чтобы получить текущую погоду и подобрать образ!",
         reply_markup=weather_menu_keyboard
     )
 
 
-
-async def handle_back_to_start(message: types.Message):
+async def handle_back_to_start(message: types.Message, state: FSMContext):
+    await state.clear()
     await message.answer(
         "Привет! Выбери регион, в котором хочешь узнать погоду",
         reply_markup=start_keyboard
@@ -207,7 +301,8 @@ async def handle_weather(message: types.Message, state: FSMContext):
         data = response.json()
         current = data["current"]
 
-        weather_emoji, weather_desc = decode_weather_code(current["weather_code"]).split(" ", 1)
+        weather_full = decode_weather_code(current["weather_code"])
+        weather_emoji, weather_desc = weather_full.split(" ", 1)
 
         temp = current["temperature_2m"]
         apparent_temp = current["apparent_temperature"]
@@ -215,12 +310,22 @@ async def handle_weather(message: types.Message, state: FSMContext):
 
         category = get_weather_category(apparent_temp, wind_speed)
 
+        sensitivity = user_sensitivity.get(user_id, 0)
+        category += sensitivity
+
+        if category < 1:
+            category = 1
+        elif category > 5:
+            category = 5
+
         weather_code = current["weather_code"]
         umbrella_message = ""
         if is_raining(weather_code):
             umbrella_message = "\n\n☔ **Совет: не забудь взять зонт!**"
 
         wind_message = ""
+        if wind_speed > 10:
+            wind_message = f"\n💨 **Сильный ветер! Будь осторожен.**"
 
         await state.update_data(
             temperature=temp,
@@ -232,13 +337,13 @@ async def handle_weather(message: types.Message, state: FSMContext):
         text = (
             f"🌤 **Погода сейчас**:\n\n"
             f"🌡 Температура: {temp}°C\n"
-            f" Ощущается как: {apparent_temp}°C\n"
+            f"🌡 Ощущается как: {apparent_temp}°C\n"
             f"{weather_emoji} {weather_desc.strip()}\n"
             f"💧 Осадки: {current['precipitation']} мм/ч\n"
             f"💨 Ветер: {wind_speed} м/с"
             f"{wind_message}"
             f"{umbrella_message}\n\n"
-            f" **Выбери стиль образа:**"
+            f"👇 **Выбери стиль образа:**"
         )
 
         await message.answer(
@@ -270,24 +375,121 @@ async def handle_back_to_weather(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# Функция для отправки ежедневных уведомлений
+async def send_daily_notifications(bot: Bot):
+    while True:
+        try:
+            current_time = datetime.now().strftime("%H:%M")
+
+            for user_id, notif_time in user_notification_time.items():
+                if not user_notifications_enabled.get(user_id, False):
+                    continue
+
+                if notif_time == current_time:
+                    if user_id not in user_locations:
+                        continue
+
+                    lat = user_locations[user_id]["lat"]
+                    lon = user_locations[user_id]["lon"]
+
+                    url = (
+                        f"https://api.open-meteo.com/v1/forecast?"
+                        f"latitude={lat}&longitude={lon}"
+                        f"&current=temperature_2m,apparent_temperature,weather_code,precipitation,wind_speed_10m"
+                    )
+
+                    try:
+                        response = requests.get(url, timeout=10)
+                        data = response.json()
+                        current = data["current"]
+
+                        weather_full = decode_weather_code(current["weather_code"])
+                        weather_emoji, weather_desc = weather_full.split(" ", 1)
+
+                        temp = current["temperature_2m"]
+                        apparent_temp = current["apparent_temperature"]
+                        wind_speed = current["wind_speed_10m"]
+
+                        category = get_weather_category(apparent_temp, wind_speed)
+                        sensitivity = user_sensitivity.get(user_id, 0)
+                        category += sensitivity
+
+                        if category < 1:
+                            category = 1
+                        elif category > 5:
+                            category = 5
+
+                        weather_code = current["weather_code"]
+                        umbrella_message = ""
+                        if is_raining(weather_code):
+                            umbrella_message = "\n\n☔ *Совет: не забудь взять зонт!*"
+
+                        wind_message = ""
+                        if wind_speed > 10:
+                            wind_message = "\n💨 *Сильный ветер! Будь осторожен.*"
+
+                        text = (
+                            f"🌤 *Ежедневная сводка погоды:*\n\n"
+                            f"🌡 Температура: {temp}°C\n"
+                            f"🌡 Ощущается как: {apparent_temp}°C\n"
+                            f"{weather_emoji} {weather_desc.strip()}\n"
+                            f"💧 Осадки: {current['precipitation']} мм/ч\n"
+                            f"💨 Ветер: {wind_speed} м/с"
+                            f"{wind_message}"
+                            f"{umbrella_message}\n\n"
+                            f"👇 *Подбери образ:*"
+                        )
+
+                        await bot.send_message(
+                            chat_id=user_id,
+                            text=text,
+                            parse_mode="Markdown",
+                            reply_markup=get_outfit_keyboard()
+                        )
+
+                        await asyncio.sleep(1)
+
+                    except Exception as e:
+                        print(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
+
+            await asyncio.sleep(30)
+
+        except Exception as e:
+            print(f"Ошибка в send_daily_notifications: {e}")
+            await asyncio.sleep(30)
+
+
 async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
     dp.message.register(cmd_start, CommandStart())
-    dp.message.register(handle_region_button, F.text == "Выбрать регион ")
+    dp.message.register(handle_region_button, F.text == "Выбрать регион 📍")
     dp.message.register(handle_location, F.location)
+
+    dp.message.register(handle_sensitivity, F.text.in_([
+        "Часто мерзну",
+        "Нормальная восприимчивость",
+        "Часто жарко"
+    ]))
+
+    dp.message.register(handle_notification_time, OutfitState.waiting_for_time)
+
     dp.message.register(handle_weather, F.text == "Узнать погоду ☁️")
 
-    # Обработчик кнопки "Назад" из клавиатуры погоды
-    dp.message.register(handle_back_to_start, F.text.contains("Назад"))
+    dp.message.register(handle_back_to_start, F.text == "◀️ Назад")
 
     dp.callback_query.register(handle_outfit_choice, F.data.startswith("style_"))
-    # Обработчик кнопки "Назад" из инлайн-клавиатуры стилей
     dp.callback_query.register(handle_back_to_weather, F.data == "back_to_weather")
 
     print("🤖 Бот запущен. Для остановки нажмите Ctrl+C.")
-    await dp.start_polling(bot)
+
+    scheduler_task = asyncio.create_task(send_daily_notifications(bot))
+
+    try:
+        await dp.start_polling(bot)
+    finally:
+        scheduler_task.cancel()
 
 
 if __name__ == "__main__":
