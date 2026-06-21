@@ -60,11 +60,11 @@ notification_time_keyboard = ReplyKeyboardMarkup(
 )
 
 
-#  Функция для создания инлайн-клавиатуры с кнопками стилей и "Назад"
+
 def get_outfit_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🏃 Sport", callback_data="style_sport")
-    builder.button(text="👖 Nefor", callback_data="style_nefor")
+    builder.button(text="👖 Opium", callback_data="style_opium")
     builder.button(text="👕 Casual", callback_data="style_casual")
     builder.button(text="📦 Archive", callback_data="style_archive")
     builder.button(text="◀️ Назад", callback_data="back_to_weather")
@@ -104,7 +104,7 @@ def is_raining(weather_code: int) -> bool:
 async def send_outfit_image(message: types.Message, style: str, category: int):
     max_files = {
         "sport": 5,
-        "nefor": 5,
+        "opium": 5,
         "casual": 6,
         "archive": 5
     }
@@ -116,7 +116,7 @@ async def send_outfit_image(message: types.Message, style: str, category: int):
 
     style_names = {
         "sport": "🏃 Sport",
-        "nefor": "👖 Nefor",
+        "opium": "👖 Opium",
         "casual": "👕 Casual",
         "archive": "📦 Archive"
     }
